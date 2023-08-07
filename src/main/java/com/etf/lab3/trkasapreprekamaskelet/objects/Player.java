@@ -11,18 +11,15 @@ import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Box;
-import javafx.scene.text.Text;
 import javafx.scene.transform.Rotate;
 import javafx.util.Duration;
-
-import java.time.Instant;
 
 public class Player extends GameObject implements EventHandler<Event> {
     private static final double DEFAULT_POSITION_X = 0;
     private static final double DEFAULT_POSITION_Y = 0;
     private static final double DEFAULT_POSITION_Z = 0;
 
-    private static final double MAX_JUMP_HEIGHT = 20;
+    private static final double MAX_JUMP_HEIGHT = 15;
     private static final int JUMPING_DURATION = 500;
     private static final int ON_JUMP_DURATION = 50;
 
@@ -30,7 +27,9 @@ public class Player extends GameObject implements EventHandler<Event> {
     public static final double FAR_CLIP = 10_000;
     public static final double FIELD_OF_VIEW = 60;
 
-    private PerspectiveCamera camera;
+    private PerspectiveCamera firstPersonCamera;
+    private PerspectiveCamera thirdPersonCamera;
+
     private Box shape;
     private PointLight lamp;
     private boolean lampOn = true;
@@ -48,19 +47,34 @@ public class Player extends GameObject implements EventHandler<Event> {
         Left, Still, Right
     }
 
+    private enum CameraPosition {
+        FirsPerson, ThirdPerson
+    }
+
     private PlayerState playerState = PlayerState.Running;
     private CameraState cameraState = CameraState.Still;
+    private CameraPosition cameraPosition = CameraPosition.FirsPerson;
 
-    public Player(Position position) {
+    private Game game;
+
+    public Player(Position position, Game game) {
         super(position);
 
-        this.shape = new Box(30.0, 30.0, 30.0);
-        this.shape.setVisible(false);
+        this.game = game;
 
-        this.camera = new PerspectiveCamera(true);
-        this.camera.setNearClip(NEAR_CLIP);
-        this.camera.setFarClip(FAR_CLIP);
-        this.camera.setFieldOfView(FIELD_OF_VIEW);
+        this.shape = new Box(10.0, 30.0, 10.0);
+
+        this.firstPersonCamera = new PerspectiveCamera(true);
+        this.firstPersonCamera.setNearClip(NEAR_CLIP);
+        this.firstPersonCamera.setFarClip(FAR_CLIP);
+        this.firstPersonCamera.setFieldOfView(FIELD_OF_VIEW);
+
+        this.thirdPersonCamera = new PerspectiveCamera(true);
+        this.thirdPersonCamera.setNearClip(NEAR_CLIP);
+        this.thirdPersonCamera.setFarClip(FAR_CLIP);
+        this.thirdPersonCamera.setFieldOfView(FIELD_OF_VIEW);
+        this.thirdPersonCamera.setTranslateZ(-100.0D);
+        this.thirdPersonCamera.setTranslateY(-50.0D);
 
         this.lamp = new PointLight();
         this.lamp.setColor(Color.WHITE);
@@ -70,16 +84,16 @@ public class Player extends GameObject implements EventHandler<Event> {
         this.setTranslateY(position.getY());
         this.initialHeight = position.getY();
 
-        this.getChildren().addAll(this.shape, this.camera);
+        this.getChildren().addAll(this.shape, this.firstPersonCamera);
 
         this.setupAnimations();
 
     }
 
-    public static Player InstantiatePlayer() {
+    public static Player InstantiatePlayer(Game game) {
         return new Player(new Position(DEFAULT_POSITION_X,
                 DEFAULT_POSITION_Y,
-                DEFAULT_POSITION_Z));
+                DEFAULT_POSITION_Z), game);
     }
 
     @Override
@@ -109,6 +123,10 @@ public class Player extends GameObject implements EventHandler<Event> {
                     rotateCameraRight();
                 } else if ((keyEvent.getCode() == KeyCode.L) && keyEvent.getEventType() == KeyEvent.KEY_PRESSED) {
                     this.toggleLight();
+                } else if ((keyEvent.getCode() == KeyCode.DIGIT1) && keyEvent.getEventType() == KeyEvent.KEY_PRESSED) {
+                    this.firstPerson();
+                } else if ((keyEvent.getCode() == KeyCode.DIGIT2) && keyEvent.getEventType() == KeyEvent.KEY_PRESSED) {
+                    this.thirdPerson();
                 }
             }
         }
@@ -119,22 +137,23 @@ public class Player extends GameObject implements EventHandler<Event> {
     }
 
     public Camera getCamera() {
-        return camera;
+        if (this.cameraPosition == CameraPosition.FirsPerson)
+            return this.firstPersonCamera;
+        else
+            return this.thirdPersonCamera;
     }
 
     private void moveLeft() {
-        if (lane == 0) {
+        if (lane == 0)
             return;
-        }
 
         lane--;
         this.setTranslateX(this.getTranslateX() - Track.LANE_WIDTH);
     }
 
     private void moveRight() {
-        if (lane == 2) {
+        if (lane == 2)
             return;
-        }
 
         lane++;
         this.setTranslateX(this.getTranslateX() + Track.LANE_WIDTH);
@@ -154,9 +173,14 @@ public class Player extends GameObject implements EventHandler<Event> {
             else
                 this.cameraState = CameraState.Left;
 
-            this.camera.getTransforms().add(
-                    new Rotate(-15, Rotate.Y_AXIS)
-            );
+            if (this.cameraPosition == CameraPosition.FirsPerson)
+                this.firstPersonCamera.getTransforms().add(
+                        new Rotate(-15, Rotate.Y_AXIS)
+                );
+            else
+                this.thirdPersonCamera.getTransforms().add(
+                        new Rotate(-15, Rotate.Y_AXIS)
+                );
         }
     }
 
@@ -167,15 +191,38 @@ public class Player extends GameObject implements EventHandler<Event> {
             else
                 this.cameraState = CameraState.Right;
 
-            this.camera.getTransforms().add(
-                    new Rotate(15, Rotate.Y_AXIS)
-            );
+            if (this.cameraPosition == CameraPosition.FirsPerson)
+                this.firstPersonCamera.getTransforms().add(
+                        new Rotate(15, Rotate.Y_AXIS)
+                );
+            else
+                this.thirdPersonCamera.getTransforms().add(
+                        new Rotate(15, Rotate.Y_AXIS)
+                );
+        }
+    }
+
+    private void firstPerson() {
+        if (this.cameraPosition != CameraPosition.FirsPerson) {
+            this.cameraPosition = CameraPosition.FirsPerson;
+            this.getChildren().remove(this.thirdPersonCamera);
+            this.getChildren().add(this.firstPersonCamera);
+            this.game.setupCamera();
+        }
+    }
+
+    private void thirdPerson() {
+        if (this.cameraPosition != CameraPosition.ThirdPerson) {
+            this.cameraPosition = CameraPosition.ThirdPerson;
+            this.getChildren().remove(this.firstPersonCamera);
+            this.getChildren().add(this.thirdPersonCamera);
+            this.game.setupCamera();
         }
     }
 
     public boolean decreaseLives() {
-        if (lives >= 1) {
-            lives--;
+        if (this.lives >= 1) {
+            this.lives--;
             return true;
         } else {
             this.lamp.setColor(Color.RED);
@@ -191,11 +238,11 @@ public class Player extends GameObject implements EventHandler<Event> {
 
     private void toggleLight() {
         if (lampOn) {
-            lampOn = false;
+            this.lampOn = false;
             this.lamp.setColor(Color.TRANSPARENT);
             this.switchLight();
         } else {
-            lampOn = true;
+            this.lampOn = true;
             this.lamp.setColor(Color.WHITE);
             this.switchLight();
         }

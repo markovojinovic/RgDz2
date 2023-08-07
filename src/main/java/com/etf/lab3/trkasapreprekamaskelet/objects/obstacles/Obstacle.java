@@ -3,13 +3,21 @@ package com.etf.lab3.trkasapreprekamaskelet.objects.obstacles;
 import com.etf.lab3.trkasapreprekamaskelet.objects.GameObject;
 import com.etf.lab3.trkasapreprekamaskelet.utility.Position;
 
+import java.util.Random;
+
 public class Obstacle extends GameObject {
     private static final double OBSTACLE_SPEED = 4.0D;
     private ObstacleBody obstacleBody;
 
     public Obstacle(Position position) {
         super(position);
-        this.obstacleBody = new Hurdle(position);
+        
+        double random = (new Random()).nextDouble();
+        if (random <= 0.5)
+            this.obstacleBody = new Hurdle(position);
+        else
+            this.obstacleBody = new HeigherHurdle(position);
+
         this.setTranslateX(position.getX());
         this.setTranslateY(position.getY() - this.obstacleBody.getObstacleHeight() / (OBSTACLE_SPEED / 2));
         this.setTranslateZ(position.getZ());

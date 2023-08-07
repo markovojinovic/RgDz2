@@ -102,7 +102,7 @@ public class Game extends Application {
         this.scene.setFill(DEFAULT_BACKGROUND_COLOR);
         this.scene.setCursor(Cursor.NONE);
 
-        this.player = Player.InstantiatePlayer();
+        this.player = Player.InstantiatePlayer(this);
         this.scene.setOnMouseMoved(this.player);
         this.scene.setOnKeyPressed(this.player);
         this.scene.setOnKeyReleased(this.player);
@@ -145,6 +145,10 @@ public class Game extends Application {
         this.texts.getChildren().addAll(this.livesIndicators);
         this.texts.getChildren().addAll(this.timeText, this.scoreText);
         this.subscenes.getChildren().addAll(this.gameSubscene, this.textSubscene);
+    }
+
+    public void setupCamera(){
+        this.gameSubscene.setCamera(this.player.getCamera());
     }
 
     private void showStage() {
