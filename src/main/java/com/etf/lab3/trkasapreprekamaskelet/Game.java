@@ -4,10 +4,7 @@ import com.etf.lab3.trkasapreprekamaskelet.objects.obstacles.Obstacle;
 import com.etf.lab3.trkasapreprekamaskelet.objects.Player;
 import com.etf.lab3.trkasapreprekamaskelet.objects.Track;
 import com.etf.lab3.trkasapreprekamaskelet.objects.text.Plus;
-import com.etf.lab3.trkasapreprekamaskelet.objects.tokens.Diamond;
-import com.etf.lab3.trkasapreprekamaskelet.objects.tokens.GoldenDiamond;
-import com.etf.lab3.trkasapreprekamaskelet.objects.tokens.Health;
-import com.etf.lab3.trkasapreprekamaskelet.objects.tokens.Token;
+import com.etf.lab3.trkasapreprekamaskelet.objects.tokens.*;
 import com.etf.lab3.trkasapreprekamaskelet.utility.Position;
 import javafx.animation.AnimationTimer;
 import javafx.application.Application;
@@ -60,10 +57,14 @@ public class Game extends Application {
     private long timeInSeconds = 0;
     private long timeInMinutes = 0;
     private Text timeText;
+    private Text jetpackTimeText = null;
     private int obstacleCount = 0;
 
     private Plus[] livesIndicators;
     private int livesIterator = 0;
+
+    private boolean jetpackActive = false;
+    private long jetpackFlyUppTime = -1;
 
     private int targetObstacleCount = DEFAULT_OBSTACLE_TARGET_COUNT;
     private long obstacleCreationSpeed = DEFAULT_OBSTACLE_CREATION_SPEED;
@@ -73,10 +74,22 @@ public class Game extends Application {
     private final UpdateTimer timer = new UpdateTimer();
 
     private class UpdateTimer extends AnimationTimer {
+
+        private long previous;
+
         @Override
         public void handle(long now) {
+
+            if ( this.previous == 0 ) {
+                this.previous = now;
+            }
+
+            double ds = ( now - this.previous ) / 1e9;
+            this.previous = now;
+
             if (lastTimeUpdated + 1000000000L < now) {
                 timeInSeconds++;
+                onSecondUpdate();
                 lastTimeUpdated = now;
             }
             timeInMinutes = timeInSeconds / 60;
@@ -84,6 +97,7 @@ public class Game extends Application {
             updateObstacles(now);
             updateScore(now);
             updateTime();
+            player.update(ds);
         }
     }
 
@@ -93,6 +107,39 @@ public class Game extends Application {
 
         setupScene();
         showStage();
+    }
+
+    private void onSecondUpdate(){
+        if (jetpackActive) {
+            if (jetpackTimeText == null) {
+                jetpackTimeText = new Text();
+                jetpackTimeText.setFont(Font.font("Tahoma", BIG_FONT_SIZE / 2));
+                jetpackTimeText.setFill(Color.PURPLE);
+                jetpackTimeText.setTranslateX(355.0D);
+                jetpackTimeText.setTranslateY(70.0D);
+                texts.getChildren().add(jetpackTimeText);
+            }
+            jetpackTimeText.setText(String.valueOf(11 - (timeInSeconds - jetpackFlyUppTime)));
+        }
+        if (Obstacle.obstacleSpeed < 2 * Obstacle.INITIAL_OBSTACLE_SPEED
+                && Token.tokenSpeed < 2 * Token.INITIAL_TOKEN_SPEED) {
+            Obstacle.obstacleSpeed += Obstacle.INITIAL_OBSTACLE_SPEED / 120;
+            Token.tokenSpeed += Token.INITIAL_TOKEN_SPEED / 120;
+        }
+        if ((timeInSeconds - jetpackFlyUppTime == 11) && jetpackActive) {
+            jetpackActive = false;
+            player.flyDown();
+
+            List<Node> tmpChildren = objects.getChildren();
+            for (int j = 0; j < tmpChildren.size(); j++) {
+                Node tmpChild = (Node) tmpChildren.get(j);
+                if (tmpChild instanceof Token) {
+                    ((Token) tmpChild).flyDown();
+                }
+            }
+            texts.getChildren().remove(jetpackTimeText);
+            jetpackTimeText = null;
+        }
     }
 
     private void setupScene() {
@@ -126,6 +173,7 @@ public class Game extends Application {
             this.livesIndicators[i].setTranslateX((double) (20 * (i + 1)));
             this.livesIndicators[i].setTranslateY(40.0D);
         }
+        livesIndicators[0].makeRed();
         livesIndicators[1].makeRed();
         livesIndicators[2].makeRed();
 
@@ -147,7 +195,7 @@ public class Game extends Application {
         this.subscenes.getChildren().addAll(this.gameSubscene, this.textSubscene);
     }
 
-    public void setupCamera(){
+    public void setupCamera() {
         this.gameSubscene.setCamera(this.player.getCamera());
     }
 
@@ -167,7 +215,7 @@ public class Game extends Application {
         for (int i = 0; i < this.objects.getChildren().size(); i++) {
             Node child = (Node) children.get(i);
             if (child instanceof Obstacle) {
-                if (child.getBoundsInParent().intersects(this.player.localToScene(this.player.getParentBounds()))) {
+                if (child.getBoundsInParent().intersects(this.player.localToScene(this.player.getParentBounds())) && !jetpackActive) {
                     if (this.player.decreaseLives()) {
                         children.remove(child);
                         this.decreaseLive();
@@ -193,15 +241,33 @@ public class Game extends Application {
                         player.increaseLives(1);
                         this.increaseLive();
                     }
-                    if (child instanceof Diamond)
-                        this.increaseScore(1);
                     if (child instanceof GoldenDiamond) {
                         this.lastGoldDiamondTaken = this.timeInSeconds;
                         this.scoreMultiplayer = 2;
                     }
+                    if (child instanceof Diamond)
+                        this.increaseScore(1);
+                    if (child instanceof JetPack) {
+                        this.jetpackActive = true;
+                        this.jetpackFlyUppTime = this.timeInSeconds;
+                        this.player.flyUp();
+
+                        List<Node> tmpChildren = this.objects.getChildren();
+                        for (int j = 0; j < tmpChildren.size(); j++) {
+                            Node tmpChild = (Node) tmpChildren.get(j);
+                            if (tmpChild instanceof JetPack) {
+                                this.objects.getChildren().remove(tmpChild);
+                                this.tokenCount--;
+                            }
+                            if (tmpChild instanceof Token) {
+                                ((Token) tmpChild).flyUp();
+                            }
+                        }
+                    }
                 }
         }
-        this.tryCreateTokens(now, !this.tryCreateObstacles(now));
+        this.tryCreateObstacles(now);
+        this.tryCreateTokens(now);
     }
 
     private void updateScore(long now) {
@@ -266,18 +332,30 @@ public class Game extends Application {
             return false;
     }
 
-    private void tryCreateTokens(long now, boolean tryCreate) {
-        if (tryCreate && this.tokenCount < this.targetTokenCount && (double) now > (double) this.lastTokenCreatedTime + 7.5E8D) {
-            Position position = new Position(this.track.getRandomX(), this.track.getY() - 20.0D, OBSTACLE_SPAWN_DEPTH);
+    private void tryCreateTokens(long now) {
+//        tryCreate && this.tokenCount < this.targetTokenCount
+
+        if ((double) now > (double) this.lastTokenCreatedTime + 7.5E8D) {
+            Position position;
+
+            if (!this.jetpackActive)
+                position = new Position(this.track.getRandomX(), this.track.getY() - 20.0D, OBSTACLE_SPAWN_DEPTH);
+            else
+                position = new Position(this.track.getRandomX(), this.track.getY() - 20.0D - Player.MAX_FLY_HEIGHT, OBSTACLE_SPAWN_DEPTH);
+
             double random = (new Random()).nextDouble();
-            Token token = new Diamond(position);
-            if (random <= 0.3D)
+            Token token = null;
+            if (random <= 0.05D && !this.jetpackActive)
+                token = new JetPack(position);
+            else if (random <= 0.15D)
                 token = new Health(position);
-            else if (random <= 0.4D)
+            else if (random <= 0.3D)
                 token = new GoldenDiamond(position);
+            else
+                token = new Diamond(position);
 
-
-            this.objects.getChildren().add(token);
+            if (token != null)
+                this.objects.getChildren().add(token);
             this.tokenCount++;
             this.lastTokenCreatedTime = now;
         }

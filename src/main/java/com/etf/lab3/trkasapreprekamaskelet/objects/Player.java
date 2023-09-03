@@ -19,9 +19,11 @@ public class Player extends GameObject implements EventHandler<Event> {
     private static final double DEFAULT_POSITION_Y = 0;
     private static final double DEFAULT_POSITION_Z = 0;
 
-    private static final double MAX_JUMP_HEIGHT = 15;
-    private static final int JUMPING_DURATION = 500;
-    private static final int ON_JUMP_DURATION = 50;
+    public static final double MAX_FLY_HEIGHT = 40;
+    private static final int FLYING_DURATION = 1000;
+
+    private static final double GRAVITY_FORCE = 100D;
+    private static final double DEFAULT_JUMP_FORCE = 50D;
 
     public static final double NEAR_CLIP = 0.1;
     public static final double FAR_CLIP = 10_000;
@@ -37,10 +39,12 @@ public class Player extends GameObject implements EventHandler<Event> {
     private int lane = 1;
     private int lives = 0;
     private double initialHeight;
-    private Timeline jumpUp, jumpDown;
+    private double jumpForce = 0;
+    private boolean canDoubleJump = true;
+    private Timeline flyUpAnimation, flyDownAnimation;
 
     private enum PlayerState {
-        Running, JumpUp, JumpDown, OnJump
+        Run, Jump, Fly
     }
 
     private enum CameraState {
@@ -51,7 +55,7 @@ public class Player extends GameObject implements EventHandler<Event> {
         FirsPerson, ThirdPerson
     }
 
-    private PlayerState playerState = PlayerState.Running;
+    private PlayerState playerState = PlayerState.Run;
     private CameraState cameraState = CameraState.Still;
     private CameraPosition cameraPosition = CameraPosition.FirsPerson;
 
@@ -160,10 +164,22 @@ public class Player extends GameObject implements EventHandler<Event> {
     }
 
     private void jump() {
-        if (this.playerState == PlayerState.Running) {
-            this.playerState = PlayerState.JumpUp;
-            this.jumpUp.play();
+        if (this.playerState == PlayerState.Run) {
+            this.playerState = PlayerState.Jump;
+            this.jumpForce = DEFAULT_JUMP_FORCE;
+        } else if (this.playerState == PlayerState.Jump && this.canDoubleJump) {
+            this.jumpForce = DEFAULT_JUMP_FORCE;
+            this.canDoubleJump = false;
         }
+    }
+
+    public void flyUp() {
+        this.playerState = PlayerState.Fly;
+        this.flyUpAnimation.play();
+    }
+
+    public void flyDown() {
+        this.flyDownAnimation.play();
     }
 
     private void rotateCameraLeft() {
@@ -257,38 +273,47 @@ public class Player extends GameObject implements EventHandler<Event> {
     }
 
     private void setupAnimations() {
-        this.jumpUp = new Timeline(
-                new KeyFrame(
-                        Duration.ZERO,
-                        new KeyValue(this.translateYProperty(), this.initialHeight, Interpolator.EASE_BOTH)
-                ),
-                new KeyFrame(
-                        Duration.millis(JUMPING_DURATION),
-                        new KeyValue(this.translateYProperty(), this.initialHeight - MAX_JUMP_HEIGHT, Interpolator.EASE_BOTH)
-                )
-        );
-        this.jumpUp.setOnFinished(event -> {
-            this.playerState = PlayerState.OnJump;
-            PauseTransition delay = new PauseTransition(Duration.millis(ON_JUMP_DURATION));
-            delay.setOnFinished(event1 -> {
-                this.playerState = PlayerState.JumpDown;
-                this.jumpDown.play();
-            });
-            delay.playFromStart();
-        });
 
-        this.jumpDown = new Timeline(
+        this.flyUpAnimation = new Timeline(
                 new KeyFrame(
                         Duration.ZERO,
-                        new KeyValue(this.translateYProperty(), this.initialHeight - MAX_JUMP_HEIGHT, Interpolator.EASE_BOTH)
+                        new KeyValue(this.translateYProperty(), this.initialHeight, Interpolator.EASE_BOTH)
                 ),
                 new KeyFrame(
-                        Duration.millis(JUMPING_DURATION),
+                        Duration.millis(FLYING_DURATION),
+                        new KeyValue(this.translateYProperty(), this.initialHeight - MAX_FLY_HEIGHT, Interpolator.EASE_BOTH)
+                )
+        );
+
+        this.flyDownAnimation = new Timeline(
+                new KeyFrame(
+                        Duration.ZERO,
+                        new KeyValue(this.translateYProperty(), this.initialHeight - MAX_FLY_HEIGHT, Interpolator.EASE_BOTH)
+                ),
+                new KeyFrame(
+                        Duration.millis(FLYING_DURATION / 2),
                         new KeyValue(this.translateYProperty(), this.initialHeight, Interpolator.EASE_BOTH)
                 )
         );
-        this.jumpDown.setOnFinished(event -> {
-            this.playerState = PlayerState.Running;
+        this.flyDownAnimation.setOnFinished(event -> {
+            this.playerState = PlayerState.Run;
         });
+    }
+
+    public void update(double ds) {
+        switch (this.playerState) {
+            case Jump:
+                double newY = this.getTranslateY();
+                this.jumpForce += -(GRAVITY_FORCE * ds);
+                newY -= this.jumpForce * ds;
+                if (newY > 0) {
+                    newY = 0;
+                    this.setTranslateY(newY);
+                    this.playerState = PlayerState.Run;
+                    this.canDoubleJump = true;
+                } else
+                    this.setTranslateY(newY);
+                break;
+        }
     }
 }
